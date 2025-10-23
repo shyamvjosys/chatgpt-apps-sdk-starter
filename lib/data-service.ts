@@ -267,3 +267,26 @@ export function getAllServices(): string[] {
   return getServiceNames();
 }
 
+// Re-export device services
+export {
+  searchDevice,
+  getDevicesByUser,
+  getUserDevices,
+  getAvailableDevices,
+  getDeviceSummary,
+  auditDeviceAssignments,
+  getWarrantyExpiringDevices,
+  getDevicesByLocation,
+  getDeviceLifecycleStats,
+  getAllDeviceTypes,
+  getAllManufacturers,
+} from "./device-service";
+
+// Re-export unified services
+export {
+  getCompleteITProfile,
+  auditDeviceAssignmentMismatch,
+  getOnboardingChecklist,
+  getOffboardingChecklist,
+} from "./unified-service";
+

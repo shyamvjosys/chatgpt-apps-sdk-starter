@@ -469,6 +469,337 @@ const handler = createMcpHandler(async (server) => {
       };
     }
   );
+
+  // UNIFIED TOOLS - Combining Employee + Device Data
+
+  // Tool 9: Get Complete IT Profile
+  const completeProfileWidget = {
+    id: "get_complete_it_profile",
+    title: "Complete IT Profile",
+    templateUri: "ui://widget/complete-it-profile.html",
+    invoking: "Loading complete IT profile...",
+    invoked: "IT profile loaded",
+    path: "/complete-it-profile",
+    description: "View complete IT profile with services and devices",
+    widgetDomain: baseURL,
+  };
+
+  const completeProfileHtml = await getAppsSdkCompatibleHtml(baseURL, completeProfileWidget.path);
+  server.registerResource(
+    completeProfileWidget.id,
+    completeProfileWidget.templateUri,
+    {
+      title: completeProfileWidget.title,
+      description: completeProfileWidget.description,
+      mimeType: "text/html+skybridge",
+      _meta: {
+        "openai/widgetDescription": completeProfileWidget.description,
+        "openai/widgetPrefersBorder": true,
+      },
+    },
+    async (uri) => {
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: "text/html+skybridge",
+            text: `<html>${completeProfileHtml}</html>`,
+            _meta: {
+              "openai/widgetDescription": completeProfileWidget.description,
+              "openai/widgetPrefersBorder": true,
+              "openai/widgetDomain": completeProfileWidget.widgetDomain,
+            },
+          },
+        ],
+      };
+    }
+  );
+
+  server.registerTool(
+    completeProfileWidget.id,
+    {
+      title: completeProfileWidget.title,
+      description:
+        "Get complete IT profile for a user including software access and hardware assets. Shows services, devices, and compliance status.",
+      inputSchema: {
+        identifier: z
+          .string()
+          .describe("Employee identifier - email, user ID, or full name"),
+      },
+      _meta: widgetMeta(completeProfileWidget),
+    },
+    async ({ identifier }) => {
+      const data = await import("@/lib/data-service").then((m) =>
+        m.getCompleteITProfile(identifier)
+      );
+
+      if (!data) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `User not found: ${identifier}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${data.user.name}: ${data.softwareAccess.activated} active services, ${data.hardwareAssets.total} devices (${data.hardwareAssets.laptops} laptops). Compliance: ${data.complianceStatus.score}%`,
+          },
+        ],
+        structuredContent: data,
+        _meta: widgetMeta(completeProfileWidget),
+      };
+    }
+  );
+
+  // Tool 10: Audit Device Assignment Mismatch
+  const deviceAuditWidget = {
+    id: "audit_device_assignment_mismatch",
+    title: "Device Assignment Audit",
+    templateUri: "ui://widget/device-assignment-audit.html",
+    invoking: "Auditing device assignments...",
+    invoked: "Audit complete",
+    path: "/device-assignment-audit",
+    description: "Find device assignment mismatches and security issues",
+    widgetDomain: baseURL,
+  };
+
+  const deviceAuditHtml = await getAppsSdkCompatibleHtml(baseURL, deviceAuditWidget.path);
+  server.registerResource(
+    deviceAuditWidget.id,
+    deviceAuditWidget.templateUri,
+    {
+      title: deviceAuditWidget.title,
+      description: deviceAuditWidget.description,
+      mimeType: "text/html+skybridge",
+      _meta: {
+        "openai/widgetDescription": deviceAuditWidget.description,
+        "openai/widgetPrefersBorder": true,
+      },
+    },
+    async (uri) => {
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: "text/html+skybridge",
+            text: `<html>${deviceAuditHtml}</html>`,
+            _meta: {
+              "openai/widgetDescription": deviceAuditWidget.description,
+              "openai/widgetPrefersBorder": true,
+              "openai/widgetDomain": deviceAuditWidget.widgetDomain,
+            },
+          },
+        ],
+      };
+    }
+  );
+
+  server.registerTool(
+    deviceAuditWidget.id,
+    {
+      title: deviceAuditWidget.title,
+      description:
+        "Audit device assignments to find devices assigned to deleted users, unknown users, and employees without required devices.",
+      inputSchema: {},
+      _meta: widgetMeta(deviceAuditWidget),
+    },
+    async () => {
+      const data = await import("@/lib/data-service").then((m) =>
+        m.auditDeviceAssignmentMismatch()
+      );
+
+      const totalIssues =
+        data.devicesAssignedToDeletedUsers.length +
+        data.devicesAssignedToUnknownUsers.length +
+        data.employeesWithoutRequiredDevices.length;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Device Audit: Found ${totalIssues} issue(s). ${data.devicesAssignedToDeletedUsers.length} devices assigned to deleted users, ${data.devicesAssignedToUnknownUsers.length} to unknown users, ${data.employeesWithoutRequiredDevices.length} employees without required devices.`,
+          },
+        ],
+        structuredContent: data,
+        _meta: widgetMeta(deviceAuditWidget),
+      };
+    }
+  );
+
+  // Tool 11: Onboarding Checklist
+  const onboardingWidget = {
+    id: "get_onboarding_checklist",
+    title: "Onboarding Checklist",
+    templateUri: "ui://widget/onboarding-checklist.html",
+    invoking: "Loading onboarding checklist...",
+    invoked: "Checklist loaded",
+    path: "/onboarding-checklist",
+    description: "View onboarding checklist for new hires",
+    widgetDomain: baseURL,
+  };
+
+  const onboardingHtml = await getAppsSdkCompatibleHtml(baseURL, onboardingWidget.path);
+  server.registerResource(
+    onboardingWidget.id,
+    onboardingWidget.templateUri,
+    {
+      title: onboardingWidget.title,
+      description: onboardingWidget.description,
+      mimeType: "text/html+skybridge",
+      _meta: {
+        "openai/widgetDescription": onboardingWidget.description,
+        "openai/widgetPrefersBorder": true,
+      },
+    },
+    async (uri) => {
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: "text/html+skybridge",
+            text: `<html>${onboardingHtml}</html>`,
+            _meta: {
+              "openai/widgetDescription": onboardingWidget.description,
+              "openai/widgetPrefersBorder": true,
+              "openai/widgetDomain": onboardingWidget.widgetDomain,
+            },
+          },
+        ],
+      };
+    }
+  );
+
+  server.registerTool(
+    onboardingWidget.id,
+    {
+      title: onboardingWidget.title,
+      description:
+        "Get onboarding checklist for a new hire showing required services and devices, completion status, and available devices for assignment.",
+      inputSchema: {
+        userEmail: z.string().describe("Email address of the new hire"),
+      },
+      _meta: widgetMeta(onboardingWidget),
+    },
+    async ({ userEmail }) => {
+      const data = await import("@/lib/data-service").then((m) =>
+        m.getOnboardingChecklist(userEmail)
+      );
+
+      if (!data) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `User not found: ${userEmail}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Onboarding for ${data.user.name}: ${data.checklist.completionPercentage}% complete. Missing: ${data.checklist.services.missing.length} services, ${data.checklist.devices.missing.length} devices.`,
+          },
+        ],
+        structuredContent: data,
+        _meta: widgetMeta(onboardingWidget),
+      };
+    }
+  );
+
+  // Tool 12: Offboarding Checklist
+  const offboardingWidget = {
+    id: "get_offboarding_checklist",
+    title: "Offboarding Checklist",
+    templateUri: "ui://widget/offboarding-checklist.html",
+    invoking: "Loading offboarding checklist...",
+    invoked: "Checklist loaded",
+    path: "/offboarding-checklist",
+    description: "View offboarding checklist for departing employees",
+    widgetDomain: baseURL,
+  };
+
+  const offboardingHtml = await getAppsSdkCompatibleHtml(baseURL, offboardingWidget.path);
+  server.registerResource(
+    offboardingWidget.id,
+    offboardingWidget.templateUri,
+    {
+      title: offboardingWidget.title,
+      description: offboardingWidget.description,
+      mimeType: "text/html+skybridge",
+      _meta: {
+        "openai/widgetDescription": offboardingWidget.description,
+        "openai/widgetPrefersBorder": true,
+      },
+    },
+    async (uri) => {
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: "text/html+skybridge",
+            text: `<html>${offboardingHtml}</html>`,
+            _meta: {
+              "openai/widgetDescription": offboardingWidget.description,
+              "openai/widgetPrefersBorder": true,
+              "openai/widgetDomain": offboardingWidget.widgetDomain,
+            },
+          },
+        ],
+      };
+    }
+  );
+
+  server.registerTool(
+    offboardingWidget.id,
+    {
+      title: offboardingWidget.title,
+      description:
+        "Get offboarding checklist showing services to deactivate, devices to collect, and action items for departing employees.",
+      inputSchema: {
+        userEmail: z.string().describe("Email address of the departing employee"),
+      },
+      _meta: widgetMeta(offboardingWidget),
+    },
+    async ({ userEmail }) => {
+      const data = await import("@/lib/data-service").then((m) =>
+        m.getOffboardingChecklist(userEmail)
+      );
+
+      if (!data) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `User not found: ${userEmail}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Offboarding for ${data.user.name}: ${data.checklist.completionPercentage}% complete. ${data.checklist.servicesStillActive} services active, ${data.checklist.devicesStillAssigned} devices still assigned. ${data.actionItems.length} action items pending.`,
+          },
+        ],
+        structuredContent: data,
+        _meta: widgetMeta(offboardingWidget),
+      };
+    }
+  );
 });
 
 export const GET = handler;
