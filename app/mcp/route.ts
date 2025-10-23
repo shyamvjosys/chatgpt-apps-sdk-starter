@@ -807,28 +807,65 @@ const handler = createMcpHandler(async (server) => {
     {
       title: "Get User Devices",
       description:
-        "Get a simple list of all devices assigned to a specific user. Shows device details, MDM status, and warranty information. Use this for quick device lookups.",
+        "Get a simple list of all devices assigned to a specific user. Shows device details, MDM status, and warranty information. Use this for quick device lookups. Accepts name, email, or user ID.",
       inputSchema: {
-        userEmail: z
+        identifier: z
           .string()
-          .describe("Email address of the user to lookup devices for"),
+          .describe("User identifier - can be full name (e.g., 'Aby Pappachan'), email (e.g., 'aby.pappa@josys.com'), or user ID (e.g., 'P0028')"),
       },
     },
-    async ({ userEmail }) => {
-      const data = await import("@/lib/data-service").then((m) =>
-        m.getUserDevices(userEmail)
-      );
+    async ({ identifier }) => {
+      const { searchEmployee, getUserDevices } = await import("@/lib/data-service");
+      
+      // First, try to find the employee to get their email
+      let email = identifier;
+      
+      // If identifier doesn't look like an email, search for the employee
+      if (!identifier.includes("@")) {
+        const employees = searchEmployee(identifier);
+        
+        if (employees.length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `No employee found matching: ${identifier}`,
+              },
+            ],
+          };
+        }
+        
+        if (employees.length > 1) {
+          const names = employees.slice(0, 5).map(e => `${e.firstName} ${e.lastName} (${e.email})`).join(", ");
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Multiple employees found for "${identifier}". Please be more specific:\n${names}${employees.length > 5 ? ` ...and ${employees.length - 5} more` : ""}`,
+              },
+            ],
+          };
+        }
+        
+        email = employees[0].email;
+      }
+      
+      const data = getUserDevices(email);
 
       if (!data) {
         return {
           content: [
             {
               type: "text",
-              text: `No devices found for user: ${userEmail}`,
+              text: `No devices found for user: ${identifier} (${email})`,
             },
           ],
         };
       }
+
+      // Get employee name for display
+      const employees = searchEmployee(email);
+      const userName = employees.length > 0 ? `${employees[0].firstName} ${employees[0].lastName}` : email;
 
       // Format device list for readable output
       const deviceList = data.devices
@@ -842,7 +879,7 @@ const handler = createMcpHandler(async (server) => {
         content: [
           {
             type: "text",
-            text: `Devices for ${userEmail}:\n\nTotal: ${data.summary.total} devices (${data.summary.laptops} laptops, ${data.summary.monitors} monitors, ${data.summary.others} others)\nMDM Enrolled: ${data.summary.allMDMEnrolled ? "✓ Yes" : "✗ No"}\nActive Warranty: ${data.summary.hasActiveWarranty ? "✓ Yes" : "✗ No"}\n\nDevices:\n${deviceList}`,
+            text: `Devices for ${userName} (${email}):\n\nTotal: ${data.summary.total} devices (${data.summary.laptops} laptops, ${data.summary.monitors} monitors, ${data.summary.others} others)\nMDM Enrolled: ${data.summary.allMDMEnrolled ? "✓ Yes" : "\� No"}\nActive Warranty: ${data.summary.hasActiveWarranty ? "✓ Yes" : "\� No"}\n\nDevices:\n${deviceList}`,
           },
         ],
         structuredContent: data,
