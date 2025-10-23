@@ -800,6 +800,55 @@ const handler = createMcpHandler(async (server) => {
       };
     }
   );
+
+  // Tool 13: Get User Devices (Simple device listing)
+  server.registerTool(
+    "get_user_devices",
+    {
+      title: "Get User Devices",
+      description:
+        "Get a simple list of all devices assigned to a specific user. Shows device details, MDM status, and warranty information. Use this for quick device lookups.",
+      inputSchema: {
+        userEmail: z
+          .string()
+          .describe("Email address of the user to lookup devices for"),
+      },
+    },
+    async ({ userEmail }) => {
+      const data = await import("@/lib/data-service").then((m) =>
+        m.getUserDevices(userEmail)
+      );
+
+      if (!data) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No devices found for user: ${userEmail}`,
+            },
+          ],
+        };
+      }
+
+      // Format device list for readable output
+      const deviceList = data.devices
+        .map(
+          (d) =>
+            `- ${d.deviceType} (${d.manufacturer} ${d.modelName}) - Asset: ${d.assetNumber}, Serial: ${d.serialNumber}${d.mdm === "Yes" ? ", MDM ✓" : ""}${d.appleCare === "Yes" ? ", AppleCare ✓" : ""}`
+        )
+        .join("\n");
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Devices for ${userEmail}:\n\nTotal: ${data.summary.total} devices (${data.summary.laptops} laptops, ${data.summary.monitors} monitors, ${data.summary.others} others)\nMDM Enrolled: ${data.summary.allMDMEnrolled ? "✓ Yes" : "✗ No"}\nActive Warranty: ${data.summary.hasActiveWarranty ? "✓ Yes" : "✗ No"}\n\nDevices:\n${deviceList}`,
+          },
+        ],
+        structuredContent: data,
+      };
+    }
+  );
 });
 
 export const GET = handler;
