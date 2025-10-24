@@ -821,7 +821,34 @@ const handler = createMcpHandler(async (server) => {
     async ({ query, deviceStatus }) => {
       const { searchDevice, findEmployeeByIdentifier } = await import("@/lib/data-service");
       
+      // Improve search by tokenizing the query and matching individual keywords
+      const queryKeywords = query
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ') // Remove special characters like hyphens
+        .split(/\s+/)
+        .filter(word => word.length > 0);
+      
       let devices = searchDevice(query);
+      
+      // If exact query returns no results, try keyword matching
+      if (devices.length === 0 && queryKeywords.length > 1) {
+        const { parseDevicesCSV } = await import("@/lib/device-parser");
+        const allDevices = parseDevicesCSV();
+        
+        // Match devices that contain all keywords
+        devices = allDevices.filter((device) => {
+          const searchableText = [
+            device.modelName,
+            device.modelNumber,
+            device.manufacturer,
+            device.deviceType,
+            device.operatingSystem,
+          ].join(' ').toLowerCase();
+          
+          // Check if all keywords are present
+          return queryKeywords.every(keyword => searchableText.includes(keyword));
+        });
+      }
       
       // Filter by status if provided
       if (deviceStatus) {
