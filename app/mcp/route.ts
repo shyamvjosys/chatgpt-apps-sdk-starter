@@ -801,7 +801,133 @@ const handler = createMcpHandler(async (server) => {
     }
   );
 
-  // Tool 13: Get User Devices (Simple device listing)
+  // Tool 13: Search Devices Globally
+  server.registerTool(
+    "search_devices",
+    {
+      title: "Search Devices",
+      description:
+        "Search for devices across the entire organization by model, manufacturer, type, or specifications. Returns devices with their assigned employees. Use this to find who has specific device models like 'MacBook M1 13-inch'.",
+      inputSchema: {
+        query: z
+          .string()
+          .describe("Search query - can be device model, manufacturer, chip type (e.g., 'MacBook M1 13-inch', 'LG Monitor', 'Dell Laptop')"),
+        deviceStatus: z
+          .enum(["In-use", "Available", "Decommissioned", "Unknown"])
+          .optional()
+          .describe("Optional: Filter by device status (default: all statuses)"),
+      },
+    },
+    async ({ query, deviceStatus }) => {
+      const { searchDevice, findEmployeeByIdentifier } = await import("@/lib/data-service");
+      
+      let devices = searchDevice(query);
+      
+      // Filter by status if provided
+      if (deviceStatus) {
+        devices = devices.filter(d => d.deviceStatus === deviceStatus);
+      }
+      
+      if (devices.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No devices found matching: "${query}"${deviceStatus ? ` with status ${deviceStatus}` : ''}`,
+            },
+          ],
+        };
+      }
+      
+      // Group devices by user
+      const userDeviceMap = new Map<string, typeof devices>();
+      const unassignedDevices: typeof devices = [];
+      
+      for (const device of devices) {
+        if (device.assignedUserEmail && device.deviceStatus === "In-use") {
+          const email = device.assignedUserEmail.toLowerCase();
+          if (!userDeviceMap.has(email)) {
+            userDeviceMap.set(email, []);
+          }
+          userDeviceMap.get(email)!.push(device);
+        } else {
+          unassignedDevices.push(device);
+        }
+      }
+      
+      // Build response text
+      let responseText = `Found ${devices.length} device(s) matching "${query}"${deviceStatus ? ` with status ${deviceStatus}` : ''}.\n\n`;
+      
+      if (userDeviceMap.size > 0) {
+        responseText += `Assigned to ${userDeviceMap.size} employee(s):\n\n`;
+        
+        const sortedUsers = Array.from(userDeviceMap.entries()).sort((a, b) => {
+          const empA = findEmployeeByIdentifier(a[0]);
+          const empB = findEmployeeByIdentifier(b[0]);
+          const nameA = empA ? `${empA.firstName} ${empA.lastName}` : a[0];
+          const nameB = empB ? `${empB.firstName} ${empB.lastName}` : b[0];
+          return nameA.localeCompare(nameB);
+        });
+        
+        sortedUsers.forEach(([email, userDevices], idx) => {
+          const employee = findEmployeeByIdentifier(email);
+          const userName = employee ? `${employee.firstName} ${employee.lastName}` : email;
+          const userId = employee?.userId || 'N/A';
+          
+          responseText += `${idx + 1}. ${userName} (${userId})\n`;
+          responseText += `   Email: ${email}\n`;
+          responseText += `   Devices (${userDevices.length}):\n`;
+          
+          userDevices.forEach((device, deviceIdx) => {
+            responseText += `     ${deviceIdx + 1}. ${device.deviceType}: ${device.manufacturer} ${device.modelName || device.modelNumber}\n`;
+            responseText += `        Asset: ${device.assetNumber}, Serial: ${device.serialNumber}\n`;
+            if (device.mdm && device.mdm !== "Not Applicable") {
+              responseText += `        MDM: ${device.mdm}\n`;
+            }
+          });
+          responseText += '\n';
+        });
+      }
+      
+      if (unassignedDevices.length > 0) {
+        responseText += `\nUnassigned/Available devices (${unassignedDevices.length}):\n`;
+        unassignedDevices.slice(0, 10).forEach((device, idx) => {
+          responseText += `${idx + 1}. ${device.deviceType}: ${device.manufacturer} ${device.modelName || device.modelNumber} (${device.deviceStatus})\n`;
+          responseText += `   Asset: ${device.assetNumber}, Serial: ${device.serialNumber}\n`;
+        });
+        if (unassignedDevices.length > 10) {
+          responseText += `\n...and ${unassignedDevices.length - 10} more unassigned devices\n`;
+        }
+      }
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: responseText,
+          },
+        ],
+        structuredContent: {
+          query,
+          totalDevices: devices.length,
+          assignedToEmployees: userDeviceMap.size,
+          unassignedDevices: unassignedDevices.length,
+          devicesByUser: Array.from(userDeviceMap.entries()).map(([email, devices]) => {
+            const employee = findEmployeeByIdentifier(email);
+            return {
+              email,
+              userId: employee?.userId || '',
+              userName: employee ? `${employee.firstName} ${employee.lastName}` : '',
+              devices,
+            };
+          }),
+          unassigned: unassignedDevices,
+        },
+      };
+    }
+  );
+
+  // Tool 14: Get User Devices (Simple device listing)
   server.registerTool(
     "get_user_devices",
     {
