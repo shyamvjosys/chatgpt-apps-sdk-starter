@@ -113,15 +113,9 @@ export interface OffboardingChecklist {
 }
 
 export function getCompleteITProfile(identifier: string): CompleteITProfile | null {
-  const employees = parseCSV();
-  const lowerIdentifier = identifier.toLowerCase();
-
-  const employee = employees.find(
-    (e) =>
-      e.email.toLowerCase() === lowerIdentifier ||
-      e.userId.toLowerCase() === lowerIdentifier ||
-      `${e.firstName} ${e.lastName}`.toLowerCase() === lowerIdentifier
-  );
+  // Import the smart identifier matching function
+  const { findEmployeeByIdentifier } = require("./data-service");
+  const employee = findEmployeeByIdentifier(identifier);
 
   if (!employee) return null;
 
@@ -134,7 +128,7 @@ export function getCompleteITProfile(identifier: string): CompleteITProfile | nu
 
   for (const [serviceName, status] of Object.entries(employee.services)) {
     if (!status) continue;
-    services.push({ name: serviceName, status });
+    services.push({ name: serviceName, status: status as string });
 
     if (status === "Activated") activated++;
     else if (status === "Invited") invited++;

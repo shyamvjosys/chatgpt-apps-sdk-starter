@@ -8,19 +8,150 @@ import type {
   ComplianceDashboard,
 } from "./types";
 
+/**
+ * Helper function to find an employee by identifier with smart name matching
+ * Handles cases like "Aby Pappachan" matching "Aby Saji Pappachan"
+ */
+export function findEmployeeByIdentifier(identifier: string): Employee | null {
+  const employees = parseCSV();
+  const lowerIdentifier = identifier.toLowerCase().trim();
+
+  // 1. Try exact email match
+  let match = employees.find(e => e.email.toLowerCase() === lowerIdentifier);
+  if (match) return match;
+
+  // 2. Try exact user ID match
+  match = employees.find(e => e.userId.toLowerCase() === lowerIdentifier);
+  if (match) return match;
+
+  // 3. Try exact username match
+  match = employees.find(e => e.username && e.username.toLowerCase() === lowerIdentifier);
+  if (match) return match;
+
+  // 4. Try exact full name match
+  match = employees.find(e => 
+    `${e.firstName} ${e.lastName}`.toLowerCase() === lowerIdentifier
+  );
+  if (match) return match;
+
+  // 5. Try smart name matching for partial names
+  // Split the query into words
+  const queryWords = lowerIdentifier.split(/\s+/).filter(w => w.length > 0);
+  
+  if (queryWords.length >= 2) {
+    // Try matching: firstName + (any word in lastName)
+    const firstName = queryWords[0];
+    const possibleLastName = queryWords.slice(1).join(' ');
+    
+    match = employees.find(e => {
+      const empFirstName = e.firstName.toLowerCase();
+      const empLastName = e.lastName.toLowerCase();
+      
+      // Check if firstName matches and lastName contains any of the query words
+      if (empFirstName === firstName || empFirstName.includes(firstName) || firstName.includes(empFirstName)) {
+        // Check if any word in the query matches any word in the employee's last name
+        const lastNameWords = empLastName.split(/\s+/);
+        const queryLastWords = possibleLastName.split(/\s+/);
+        
+        for (const queryWord of queryLastWords) {
+          if (lastNameWords.some(lw => lw === queryWord || lw.includes(queryWord) || queryWord.includes(lw))) {
+            return true;
+          }
+        }
+      }
+      return false;
+    });
+    
+    if (match) return match;
+  }
+
+  // 6. Try email prefix match (before @)
+  if (lowerIdentifier.includes('@')) {
+    const emailPrefix = lowerIdentifier.split('@')[0];
+    match = employees.find(e => e.email.toLowerCase().startsWith(emailPrefix + '@'));
+    if (match) return match;
+  } else {
+    // Try as email prefix
+    match = employees.find(e => e.email.toLowerCase().startsWith(lowerIdentifier + '@'));
+    if (match) return match;
+  }
+
+  return null;
+}
+
+/**
+ * Search for employees with improved name matching
+ * Returns scored results, best matches first
+ */
 export function searchEmployee(query: string): Employee[] {
   const employees = parseCSV();
-  const lowerQuery = query.toLowerCase();
+  const lowerQuery = query.toLowerCase().trim();
 
-  return employees.filter((emp) => {
-    return (
-      emp.firstName.toLowerCase().includes(lowerQuery) ||
-      emp.lastName.toLowerCase().includes(lowerQuery) ||
-      emp.email.toLowerCase().includes(lowerQuery) ||
-      emp.userId.toLowerCase().includes(lowerQuery) ||
-      emp.username.toLowerCase().includes(lowerQuery)
-    );
-  });
+  // Score each employee based on match quality
+  const scoredEmployees: Array<{ employee: Employee; score: number }> = [];
+
+  for (const emp of employees) {
+    let score = 0;
+    const fullName = `${emp.firstName} ${emp.lastName}`.toLowerCase();
+    const email = emp.email.toLowerCase();
+    const userId = emp.userId.toLowerCase();
+    const username = (emp.username || '').toLowerCase();
+
+    // Exact matches get highest scores
+    if (email === lowerQuery) score += 1000;
+    if (userId === lowerQuery) score += 900;
+    if (fullName === lowerQuery) score += 800;
+    if (username === lowerQuery) score += 700;
+
+    // Starts with matches
+    if (email.startsWith(lowerQuery)) score += 600;
+    if (fullName.startsWith(lowerQuery)) score += 500;
+    if (emp.firstName.toLowerCase().startsWith(lowerQuery)) score += 400;
+    if (emp.lastName.toLowerCase().startsWith(lowerQuery)) score += 350;
+
+    // Contains matches
+    if (email.includes(lowerQuery)) score += 300;
+    if (fullName.includes(lowerQuery)) score += 250;
+    if (emp.firstName.toLowerCase().includes(lowerQuery)) score += 200;
+    if (emp.lastName.toLowerCase().includes(lowerQuery)) score += 150;
+    if (userId.includes(lowerQuery)) score += 100;
+    if (username.includes(lowerQuery)) score += 50;
+
+    // Smart name matching for multi-word queries
+    const queryWords = lowerQuery.split(/\s+/).filter(w => w.length > 0);
+    if (queryWords.length >= 2) {
+      const firstName = queryWords[0];
+      const lastNameWords = emp.lastName.toLowerCase().split(/\s+/);
+      
+      // Check if first word matches first name
+      const firstNameMatch = emp.firstName.toLowerCase() === firstName || 
+                            emp.firstName.toLowerCase().includes(firstName);
+      
+      if (firstNameMatch) {
+        // Check if any subsequent query words match any word in last name
+        const queryLastWords = queryWords.slice(1);
+        let lastNameMatches = 0;
+        
+        for (const queryWord of queryLastWords) {
+          for (const lastWord of lastNameWords) {
+            if (lastWord === queryWord) lastNameMatches += 50;
+            else if (lastWord.includes(queryWord) || queryWord.includes(lastWord)) lastNameMatches += 30;
+          }
+        }
+        
+        if (lastNameMatches > 0) score += 400 + lastNameMatches;
+      }
+    }
+
+    if (score > 0) {
+      scoredEmployees.push({ employee: emp, score });
+    }
+  }
+
+  // Sort by score (descending) and return employees
+  return scoredEmployees
+    .sort((a, b) => b.score - a.score)
+    .map(item => item.employee);
 }
 
 export function getServiceAccess(
@@ -65,15 +196,8 @@ export function getServiceAccess(
 export function checkProvisioningStatus(
   identifier: string
 ): ProvisioningStatus | null {
-  const employees = parseCSV();
-  const lowerIdentifier = identifier.toLowerCase();
-
-  const emp = employees.find(
-    (e) =>
-      e.email.toLowerCase() === lowerIdentifier ||
-      e.userId.toLowerCase() === lowerIdentifier ||
-      `${e.firstName} ${e.lastName}`.toLowerCase() === lowerIdentifier
-  );
+  // Use smart identifier matching
+  const emp = findEmployeeByIdentifier(identifier);
 
   if (!emp) return null;
 

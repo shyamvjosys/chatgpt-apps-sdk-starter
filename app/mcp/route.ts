@@ -815,57 +815,72 @@ const handler = createMcpHandler(async (server) => {
       },
     },
     async ({ identifier }) => {
-      const { searchEmployee, getUserDevices } = await import("@/lib/data-service");
+      const { findEmployeeByIdentifier, searchEmployee, getUserDevices } = await import("@/lib/data-service");
       
-      // First, try to find the employee to get their email
+      // First, try to find the employee using smart identifier matching
       let email = identifier;
+      let employee = null;
       
-      // If identifier doesn't look like an email, search for the employee
-      if (!identifier.includes("@")) {
-        const employees = searchEmployee(identifier);
-        
-        if (employees.length === 0) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `No employee found matching: ${identifier}`,
-              },
-            ],
-          };
+      // If identifier looks like an email, use it directly
+      if (identifier.includes("@")) {
+        employee = findEmployeeByIdentifier(identifier);
+        if (employee) {
+          email = employee.email;
         }
+      } else {
+        // Try smart identifier matching first
+        employee = findEmployeeByIdentifier(identifier);
         
-        if (employees.length > 1) {
-          const names = employees.slice(0, 5).map(e => `${e.firstName} ${e.lastName} (${e.email})`).join(", ");
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Multiple employees found for "${identifier}". Please be more specific:\n${names}${employees.length > 5 ? ` ...and ${employees.length - 5} more` : ""}`,
-              },
-            ],
-          };
+        if (employee) {
+          email = employee.email;
+        } else {
+          // Fall back to search if no exact match
+          const employees = searchEmployee(identifier);
+          
+          if (employees.length === 0) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `No employee found matching: ${identifier}`,
+                },
+              ],
+            };
+          }
+          
+          if (employees.length > 1) {
+            const names = employees.slice(0, 5).map(e => `${e.firstName} ${e.lastName} (${e.email})`).join(", ");
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Multiple employees found for "${identifier}". Please be more specific:\n${names}${employees.length > 5 ? ` ...and ${employees.length - 5} more` : ""}`,
+                },
+              ],
+            };
+          }
+          
+          employee = employees[0];
+          email = employee.email;
         }
-        
-        email = employees[0].email;
       }
       
       const data = getUserDevices(email);
 
       if (!data) {
+        const userName = employee ? `${employee.firstName} ${employee.lastName}` : identifier;
         return {
           content: [
             {
               type: "text",
-              text: `No devices found for user: ${identifier} (${email})`,
+              text: `No devices found for ${userName} (${email})`,
             },
           ],
         };
       }
 
       // Get employee name for display
-      const employees = searchEmployee(email);
-      const userName = employees.length > 0 ? `${employees[0].firstName} ${employees[0].lastName}` : email;
+      const userName = employee ? `${employee.firstName} ${employee.lastName}` : email;
 
       // Format device list for readable output
       const deviceList = data.devices
