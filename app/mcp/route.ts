@@ -445,6 +445,85 @@ const handler = createMcpHandler(async (server) => {
     }
   );
 
+  // Tool 7b: Get Users by Service Count (Optimized)
+  server.registerTool(
+    "get_users_by_service_count",
+    {
+      title: "Get Users by Service Count",
+      description:
+        "Fast and efficient way to find users based on their number of activated services. Use this for queries like 'users with more than 5 apps' or 'employees with less than 3 services'. Much faster than iterating through all employees.",
+      inputSchema: {
+        minCount: z
+          .number()
+          .optional()
+          .describe("Minimum number of activated services (e.g., 5 for 'more than 5')"),
+        maxCount: z
+          .number()
+          .optional()
+          .describe("Maximum number of activated services (e.g., 3 for 'less than 3')"),
+        includeInactive: z
+          .boolean()
+          .optional()
+          .describe("Include inactive/deleted users (default: false, only active users)"),
+      },
+    },
+    async ({ minCount, maxCount, includeInactive }) => {
+      const { getUsersByServiceCount } = await import("@/lib/data-service");
+      const results = getUsersByServiceCount(minCount, maxCount, includeInactive || false);
+
+      if (results.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No users found with service count ${minCount ? `>= ${minCount}` : ''}${minCount && maxCount ? ' and ' : ''}${maxCount ? `<= ${maxCount}` : ''}`,
+            },
+          ],
+        };
+      }
+
+      let responseText = `Found ${results.length} user(s) with ${minCount ? `at least ${minCount}` : ''}${minCount && maxCount ? ' and ' : ''}${maxCount ? `at most ${maxCount}` : ''} activated service(s):\n\n`;
+
+      results.forEach((result, idx) => {
+        const emp = result.employee;
+        responseText += `${idx + 1}. ${emp.firstName} ${emp.lastName} (${emp.userId})\n`;
+        responseText += `   Email: ${emp.email}\n`;
+        responseText += `   Status: ${emp.status}\n`;
+        responseText += `   Activated Services: ${result.activatedServicesCount}\n`;
+        
+        if (result.activatedServicesCount <= 10) {
+          responseText += `   Services: ${result.activatedServices.join(', ')}\n`;
+        } else {
+          responseText += `   Top Services: ${result.activatedServices.slice(0, 10).join(', ')}... and ${result.activatedServicesCount - 10} more\n`;
+        }
+        responseText += '\n';
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: responseText,
+          },
+        ],
+        structuredContent: {
+          totalUsers: results.length,
+          minCount,
+          maxCount,
+          users: results.map(r => ({
+            name: `${r.employee.firstName} ${r.employee.lastName}`,
+            email: r.employee.email,
+            userId: r.employee.userId,
+            status: r.employee.status,
+            role: r.employee.role,
+            activatedServicesCount: r.activatedServicesCount,
+            activatedServices: r.activatedServices,
+          })),
+        },
+      };
+    }
+  );
+
   // Tool 8: List All Services (simple tool without widget)
   server.registerTool(
     "list_services",

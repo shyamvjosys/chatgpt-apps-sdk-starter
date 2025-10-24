@@ -387,6 +387,55 @@ export function getUsersByRole(role: string): Employee[] {
   });
 }
 
+/**
+ * Get users filtered by their activated service count
+ * Returns users with service counts matching the specified criteria
+ */
+export function getUsersByServiceCount(
+  minCount?: number,
+  maxCount?: number,
+  includeInactive: boolean = false
+): Array<{
+  employee: Employee;
+  activatedServicesCount: number;
+  activatedServices: string[];
+}> {
+  const employees = parseCSV();
+  const results: Array<{
+    employee: Employee;
+    activatedServicesCount: number;
+    activatedServices: string[];
+  }> = [];
+
+  for (const emp of employees) {
+    // Skip inactive users unless explicitly requested
+    if (!includeInactive && emp.status !== "Active") continue;
+
+    // Count activated services
+    const activatedServices: string[] = [];
+    for (const [serviceName, status] of Object.entries(emp.services)) {
+      if (status === "Activated") {
+        activatedServices.push(serviceName);
+      }
+    }
+
+    const count = activatedServices.length;
+
+    // Apply filters
+    if (minCount !== undefined && count < minCount) continue;
+    if (maxCount !== undefined && count > maxCount) continue;
+
+    results.push({
+      employee: emp,
+      activatedServicesCount: count,
+      activatedServices,
+    });
+  }
+
+  // Sort by count descending
+  return results.sort((a, b) => b.activatedServicesCount - a.activatedServicesCount);
+}
+
 export function getAllServices(): string[] {
   return getServiceNames();
 }
