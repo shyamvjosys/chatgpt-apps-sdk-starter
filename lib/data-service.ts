@@ -463,3 +463,24 @@ export {
   getOffboardingChecklist,
 } from "./unified-service";
 
+// Re-export app portfolio services
+export {
+  getSoftwareSpendReport,
+  auditCostOptimization,
+  getDepartmentSpendAnalysis,
+  auditPrivilegedAccess,
+  getServiceRoleBreakdown,
+  auditMultiAccountAnomalies,
+  getServicePortfolioOverview,
+  searchByDepartment,
+  searchByJobTitle,
+  getContractorAudit,
+  reconcileProvisionVsPortfolio,
+  getUnifiedServiceView,
+} from "./app-portfolio-service";
+
+export {
+  getPortfolioByEmail,
+  getAllDepartments,
+  getAllJobTitles,
+} from "./app-portfolio-parser";

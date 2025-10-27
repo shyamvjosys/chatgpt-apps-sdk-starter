@@ -10,6 +10,21 @@ import {
   getComplianceDashboard,
   getUsersByRole,
   getAllServices,
+  getSoftwareSpendReport,
+  auditCostOptimization,
+  getDepartmentSpendAnalysis,
+  auditPrivilegedAccess,
+  getServiceRoleBreakdown,
+  auditMultiAccountAnomalies,
+  getServicePortfolioOverview,
+  searchByDepartment,
+  searchByJobTitle,
+  getContractorAudit,
+  reconcileProvisionVsPortfolio,
+  getUnifiedServiceView,
+  getPortfolioByEmail,
+  getAllDepartments,
+  getAllJobTitles,
 } from "@/lib/data-service";
 
 const getAppsSdkCompatibleHtml = async (baseUrl: string, path: string) => {
@@ -39,6 +54,8 @@ function widgetMeta(widget: ContentWidget) {
 }
 
 const handler = createMcpHandler(async (server) => {
+  console.log('🚀 [MCP] Handler initialized at', new Date().toISOString());
+  
   // Define all widgets
   const widgets: ContentWidget[] = [
     {
@@ -468,8 +485,10 @@ const handler = createMcpHandler(async (server) => {
       },
     },
     async ({ minCount, maxCount, includeInactive }) => {
+      console.log('🔍 [MCP] get_users_by_service_count called with:', { minCount, maxCount, includeInactive });
       const { getUsersByServiceCount } = await import("@/lib/data-service");
       const results = getUsersByServiceCount(minCount, maxCount, includeInactive || false);
+      console.log('📊 [MCP] Found', results.length, 'users. Top user:', results[0]?.employee.firstName, results[0]?.employee.lastName, 'with', results[0]?.activatedServicesCount, 'services');
 
       if (results.length === 0) {
         return {
@@ -1133,7 +1152,446 @@ const handler = createMcpHandler(async (server) => {
       };
     }
   );
+
+  // ========== FINANCIAL TOOLS ==========
+
+  // Tool 15: Software Spend Report
+  server.registerTool(
+    "get_software_spend_report",
+    {
+      title: "Software Spend Report",
+      description:
+        "Get comprehensive financial analysis of software expenses. Shows total monthly spend broken down by service, user, and department. Identifies top expenses and cost trends.",
+      inputSchema: {},
+    },
+    async () => {
+      const data = getSoftwareSpendReport();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Software Spend Analysis:\n\nTotal Monthly Spend: $${data.totalMonthlySpend.toFixed(2)}\n\nTop 5 Services by Cost:\n${data.byService.slice(0, 5).map((s, i) => `${i + 1}. ${s.service}: $${s.totalCost.toFixed(2)} (${s.activeUsers} users, $${s.costPerUser.toFixed(2)}/user)`).join('\n')}\n\nTop 5 Departments by Cost:\n${data.byDepartment.slice(0, 5).map((d, i) => `${i + 1}. ${d.department}: $${d.totalCost.toFixed(2)} (${d.employeeCount} employees)`).join('\n')}\n\nTop 5 Users by Cost:\n${data.byUser.slice(0, 5).map((u, i) => `${i + 1}. ${u.name}: $${u.totalCost.toFixed(2)} (${u.serviceCount} services)`).join('\n')}`,
+          },
+        ],
+        structuredContent: data as any,
+      };
+    }
+  );
+
+  // Tool 16: Cost Optimization Audit
+  server.registerTool(
+    "audit_cost_optimization",
+    {
+      title: "Cost Optimization Audit",
+      description:
+        "Identify cost-saving opportunities including inactive accounts still incurring costs, duplicate accounts, deleted users with active paid services, and expensive contractor accounts.",
+      inputSchema: {},
+    },
+    async () => {
+      const data = auditCostOptimization();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Cost Optimization Report:\n\nTotal Potential Savings: $${data.totalPotentialSavings.toFixed(2)}/month\n\n💰 Inactive Accounts Costing Money: ${data.inactiveAccountsCosting.length}\n${data.inactiveAccountsCosting.slice(0, 5).map(a => `  - ${a.name} (${a.service}): $${a.monthlyCost.toFixed(2)}/mo`).join('\n')}\n\n👥 Duplicate Accounts: ${data.duplicateAccounts.length}\n${data.duplicateAccounts.slice(0, 5).map(d => `  - ${d.name} (${d.service}): ${d.accountCount} accounts, $${d.totalCost.toFixed(2)}/mo`).join('\n')}\n\n🚫 Deleted Users Still Costing: ${data.deletedUsersWithCost.length}\n${data.deletedUsersWithCost.slice(0, 5).map(u => `  - ${u.name}: $${u.totalWastedCost.toFixed(2)}/mo across ${u.activeAccounts.length} services`).join('\n')}\n\n📋 Top Costly Contractors: ${data.contractorsWithHighCost.length}\n${data.contractorsWithHighCost.slice(0, 5).map((c, i) => `  ${i + 1}. ${c.name}: $${c.totalCost.toFixed(2)}/mo (${c.serviceCount} services)`).join('\n')}`,
+          },
+        ],
+        structuredContent: data as any,
+      };
+    }
+  );
+
+  // Tool 17: Department Spend Analysis
+  server.registerTool(
+    "get_department_spend_analysis",
+    {
+      title: "Department Spend Analysis",
+      description:
+        "Analyze software spending for a specific department. Shows total cost, cost per employee, service breakdown, and top spenders within the department.",
+      inputSchema: {
+        department: z.string().describe("Department name (e.g., 'josys.com', 'Engineering')"),
+      },
+    },
+    async ({ department }) => {
+      const data = getDepartmentSpendAnalysis(department);
+
+      if (!data) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Department not found: ${department}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Department: ${data.department}\n\nTotal Monthly Spend: $${data.totalMonthlySpend.toFixed(2)}\nEmployees: ${data.employeeCount}\nCost per Employee: $${data.costPerEmployee.toFixed(2)}\n\nTop Services:\n${data.services.slice(0, 10).map((s, i) => `${i + 1}. ${s.service}: ${s.userCount} users, $${s.totalCost.toFixed(2)}`).join('\n')}\n\nTop Spenders:\n${data.topSpenders.slice(0, 5).map((u, i) => `${i + 1}. ${u.name}: $${u.totalCost.toFixed(2)}`).join('\n')}`,
+          },
+        ],
+        structuredContent: data as any,
+      };
+    }
+  );
+
+  // ========== SECURITY & PERMISSION TOOLS ==========
+
+  // Tool 18: Privileged Access Audit
+  server.registerTool(
+    "audit_privileged_access",
+    {
+      title: "Privileged Access Audit",
+      description:
+        "Security audit of users with administrative or elevated permissions across services. Identifies contractors with admin access, users with admin rights across multiple services, and assesses risk levels.",
+      inputSchema: {},
+    },
+    async () => {
+      const data = auditPrivilegedAccess();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Privileged Access Audit:\n\n🔐 Total Privileged Users: ${data.totalPrivilegedUsers}\n⚠️ Contractors with Admin: ${data.contractorsWithAdmin.length}\n🎯 Cross-Service Admins (3+ services): ${data.crossServiceAdmins.length}\n\nTop Privileged Users:\n${data.privilegedUsers.slice(0, 10).map((u, i) => `${i + 1}. ${u.name} (${u.userId}) - ${u.adminServiceCount} admin services [${u.riskLevel}]\n   Category: ${u.userCategory}, Title: ${u.jobTitle}\n   Services: ${u.privilegedAccounts.slice(0, 3).map(a => a.service).join(', ')}${u.adminServiceCount > 3 ? '...' : ''}`).join('\n\n')}\n\n${data.contractorsWithAdmin.length > 0 ? `\n⚠️ Contractors with Admin Access:\n${data.contractorsWithAdmin.slice(0, 5).map((c, i) => `${i + 1}. ${c.name} (${c.userId}): ${c.adminServices.join(', ')}`).join('\n')}` : ''}`,
+          },
+        ],
+        structuredContent: data as any,
+      };
+    }
+  );
+
+  // Tool 19: Service Role Breakdown
+  server.registerTool(
+    "get_service_role_breakdown",
+    {
+      title: "Service Role Breakdown",
+      description:
+        "Analyze role and permission distribution within a specific service. Shows how many users have each role, admin vs regular user count, and cost breakdown by role.",
+      inputSchema: {
+        serviceName: z.string().describe("Service name (e.g., 'AWS', 'GitHub', 'Slack')"),
+      },
+    },
+    async ({ serviceName }) => {
+      const data = getServiceRoleBreakdown(serviceName);
+
+      if (!data) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Service not found: ${serviceName}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Service: ${data.service}\n\nTotal Users: ${data.totalUsers}\nAdmin Users: ${data.adminCount}\nRegular Users: ${data.regularUserCount}\nTotal Cost: $${data.totalCost.toFixed(2)}/month\n\nRole Distribution:\n${data.roleDistribution.slice(0, 10).map((r, i) => `${i + 1}. ${r.role}: ${r.userCount} users (${r.percentage.toFixed(1)}%), $${r.totalCost.toFixed(2)}/mo`).join('\n')}`,
+          },
+        ],
+        structuredContent: data as any,
+      };
+    }
+  );
+
+  // Tool 20: Multi-Account Anomalies
+  server.registerTool(
+    "audit_multi_account_anomalies",
+    {
+      title: "Multi-Account Anomaly Audit",
+      description:
+        "Find users with multiple accounts in the same service. Distinguishes between legitimate multi-account scenarios (e.g., AWS dev/prod) and suspicious duplicates requiring review.",
+      inputSchema: {},
+    },
+    async () => {
+      const data = auditMultiAccountAnomalies();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Multi-Account Anomaly Report:\n\nUsers with Multiple Accounts: ${data.length}\n\n${data.slice(0, 15).map((user, idx) => `${idx + 1}. ${user.name} (${user.userId})\n${user.anomalies.map(a => `   ${a.isLegitimate ? '✓' : '⚠️'} ${a.service}: ${a.accountCount} accounts\n   ${a.reason}\n   Accounts: ${a.accounts.map(acc => `${acc.identifier} (${acc.roles.join(', ') || 'No roles'})`).join(', ')}`).join('\n')}`).join('\n\n')}`,
+          },
+        ],
+        structuredContent: data as any,
+      };
+    }
+  );
+
+  // ========== ANALYTICS TOOLS ==========
+
+  // Tool 21: Service Portfolio Overview
+  server.registerTool(
+    "get_service_portfolio_overview",
+    {
+      title: "Service Portfolio Overview",
+      description:
+        "Get a comprehensive overview of the entire application portfolio including total services, users, monthly spend, service utilization rates, and category breakdown.",
+      inputSchema: {},
+    },
+    async () => {
+      const data = getServicePortfolioOverview();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Service Portfolio Overview:\n\nTotal Services: ${data.totalServices}\nTotal Users: ${data.totalUsers}\nTotal Monthly Spend: $${data.totalMonthlySpend.toFixed(2)}\n\nTop 10 Services by User Count:\n${data.services.slice(0, 10).map((s, i) => `${i + 1}. ${s.name}: ${s.userCount} users (${s.accountCount} accounts)\n   Cost: $${s.totalCost.toFixed(2)}/mo, Avg: $${s.avgCostPerUser.toFixed(2)}/user\n   Utilization: ${s.utilizationRate.toFixed(1)}%`).join('\n')}\n\nBy Category:\n${data.byCategory.map((c, i) => `${i + 1}. ${c.category}: ${c.serviceCount} services, $${c.totalCost.toFixed(2)}/mo`).join('\n')}`,
+          },
+        ],
+        structuredContent: data as any,
+      };
+    }
+  );
+
+  // Tool 22: Search by Department
+  server.registerTool(
+    "search_by_department",
+    {
+      title: "Search by Department",
+      description:
+        "Find all employees, services, and spending for a specific department. Useful for department-level IT management and budget planning.",
+      inputSchema: {
+        department: z.string().describe("Department name to search for"),
+      },
+    },
+    async ({ department }) => {
+      const data = searchByDepartment(department);
+
+      if (!data) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Department not found: ${department}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Department: ${data.department}\n\nEmployees: ${data.employeeCount}\nTotal Spend: $${data.totalSpend.toFixed(2)}/month\nAvg Cost per Employee: $${data.avgCostPerEmployee.toFixed(2)}\n\nTop Employees by Cost:\n${data.employees.slice(0, 10).map((e, i) => `${i + 1}. ${e.name} (${e.userId})\n   Title: ${e.jobTitle}\n   Services: ${e.serviceCount}, Cost: $${e.totalCost.toFixed(2)}/mo`).join('\n')}\n\nTop Services:\n${data.topServices.slice(0, 10).map((s, i) => `${i + 1}. ${s.service}: ${s.userCount} users, $${s.totalCost.toFixed(2)}/mo`).join('\n')}`,
+          },
+        ],
+        structuredContent: data as any,
+      };
+    }
+  );
+
+  // Tool 23: Search by Job Title
+  server.registerTool(
+    "search_by_job_title",
+    {
+      title: "Search by Job Title",
+      description:
+        "Analyze service access and costs across employees with similar job titles. Helps identify standard access patterns and cost benchmarks for roles.",
+      inputSchema: {
+        jobTitle: z.string().describe("Job title to search for (e.g., 'Engineer', 'Manager')"),
+      },
+    },
+    async ({ jobTitle }) => {
+      const data = searchByJobTitle(jobTitle);
+
+      if (!data) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Job title not found: ${jobTitle}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Job Title: ${data.jobTitle}\n\nEmployees: ${data.employeeCount}\nAvg Services per Person: ${data.avgServicesPerPerson.toFixed(1)}\nAvg Cost per Person: $${data.avgCostPerPerson.toFixed(2)}/month\n\nCommon Services (by adoption rate):\n${data.commonServices.slice(0, 10).map((s, i) => `${i + 1}. ${s.service}: ${s.adoptionRate.toFixed(0)}% adoption, $${s.avgCost.toFixed(2)}/user`).join('\n')}\n\nEmployees:\n${data.employees.slice(0, 10).map((e, i) => `${i + 1}. ${e.name} (${e.userId})\n   Dept: ${e.department}, Services: ${e.serviceCount}, Cost: $${e.totalCost.toFixed(2)}/mo`).join('\n')}`,
+          },
+        ],
+        structuredContent: data as any,
+      };
+    }
+  );
+
+  // Tool 24: Contractor Audit
+  server.registerTool(
+    "get_contractor_audit",
+    {
+      title: "Contractor Audit",
+      description:
+        "Comprehensive audit of all contractor accounts including costs, service access, and security concerns. Identifies contractors with admin access.",
+      inputSchema: {},
+    },
+    async () => {
+      const data = getContractorAudit();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Contractor Audit Report:\n\nTotal Contractors: ${data.totalContractors}\nTotal Monthly Cost: $${data.totalMonthlyCost.toFixed(2)}\nContractors with Admin Access: ${data.contractorsWithAdmin}\n\nTop 10 Costly Contractors:\n${data.topCostlyContractors.map((c, i) => `${i + 1}. ${c.name}: $${c.totalCost.toFixed(2)}/month`).join('\n')}\n\nAll Contractors:\n${data.contractors.slice(0, 15).map((c, i) => `${i + 1}. ${c.name} (${c.userId})\n   Title: ${c.jobTitle}, Dept: ${c.department}\n   Services: ${c.serviceCount}, Cost: $${c.totalCost.toFixed(2)}/mo\n   ${c.hasAdminAccess ? `⚠️ Admin Access: ${c.adminServices.join(', ')}` : '✓ No admin access'}`).join('\n\n')}`,
+          },
+        ],
+        structuredContent: data as any,
+      };
+    }
+  );
+
+  // ========== RECONCILIATION TOOLS ==========
+
+  // Tool 25: Reconcile Provision vs Portfolio
+  server.registerTool(
+    "reconcile_provision_vs_portfolio",
+    {
+      title: "Reconcile Provision vs Portfolio Data",
+      description:
+        "Compare provision data with app portfolio data to find discrepancies. Identifies services showing 'Activated' in provisions but missing from portfolio, and vice versa. Provides a sync health score.",
+      inputSchema: {},
+    },
+    async () => {
+      const data = reconcileProvisionVsPortfolio();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Data Reconciliation Report:\n\nSync Health Score: ${data.syncHealthScore.toFixed(1)}%\nTotal Discrepancies: ${data.totalDiscrepancies}\n\n📋 In Provision but Not Portfolio: ${data.inProvisionNotPortfolio.length}\n${data.inProvisionNotPortfolio.slice(0, 10).map(d => `  - ${d.name}: ${d.service} (${d.provisionStatus})`).join('\n')}\n\n📋 In Portfolio but Not Provision: ${data.inPortfolioNotProvision.length}\n${data.inPortfolioNotProvision.slice(0, 10).map(d => `  - ${d.name}: ${d.service} (${d.accountStatus})`).join('\n')}\n\n⚠️ Status Mismatches: ${data.statusMismatches.length}\n${data.statusMismatches.slice(0, 10).map(d => `  - ${d.name}: ${d.service}\n    Provision: ${d.provisionStatus}, Portfolio: ${d.portfolioStatus}`).join('\n')}`,
+          },
+        ],
+        structuredContent: data as any,
+      };
+    }
+  );
+
+  // Tool 26: Unified Service View
+  server.registerTool(
+    "get_unified_service_view",
+    {
+      title: "Unified Service View",
+      description:
+        "Get a comprehensive view of a service combining provision data with app portfolio details. Shows account identifiers, roles, costs, and identifies any data discrepancies.",
+      inputSchema: {
+        serviceName: z.string().describe("Service name to analyze"),
+      },
+    },
+    async ({ serviceName }) => {
+      const data = getUnifiedServiceView(serviceName);
+
+      if (!data) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Service not found in portfolio: ${serviceName}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Service: ${data.serviceName}\n\nTotal Users: ${data.totalUsers}\nTotal Accounts: ${data.totalAccounts}\nTotal Monthly Cost: $${data.totalMonthlyCost.toFixed(2)}\n\nUsers:\n${data.users.slice(0, 20).map((u, i) => `${i + 1}. ${u.name} (${u.userId})\n   Email: ${u.email}\n   Provision Status: ${u.provisionStatus}\n   ${u.hasDiscrepancy ? '⚠️ DISCREPANCY DETECTED' : '✓ Data in sync'}\n   Accounts:\n${u.portfolioAccounts.map(acc => `      - ${acc.identifier}: ${acc.accountStatus}\n        Roles: ${acc.roles.join(', ') || 'None'}\n        Cost: $${acc.monthlyCost.toFixed(2)}/mo`).join('\n')}`).join('\n\n')}`,
+          },
+        ],
+        structuredContent: data as any,
+      };
+    }
+  );
+
+  // Tool 27: List All Departments
+  server.registerTool(
+    "list_departments",
+    {
+      title: "List All Departments",
+      description:
+        "Get a complete list of all departments found in the organization. Useful for exploring department-specific data.",
+      inputSchema: {},
+    },
+    async () => {
+      const departments = getAllDepartments();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Total departments: ${departments.length}\n\nDepartments:\n${departments.join('\n')}`,
+          },
+        ],
+        structuredContent: { departments },
+      };
+    }
+  );
+
+  // Tool 28: List All Job Titles
+  server.registerTool(
+    "list_job_titles",
+    {
+      title: "List All Job Titles",
+      description:
+        "Get a complete list of all job titles found in the organization. Useful for role-based access analysis.",
+      inputSchema: {},
+    },
+    async () => {
+      const jobTitles = getAllJobTitles();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Total job titles: ${jobTitles.length}\n\nJob Titles:\n${jobTitles.slice(0, 50).join('\n')}${jobTitles.length > 50 ? `\n\n...and ${jobTitles.length - 50} more` : ''}`,
+          },
+        ],
+        structuredContent: { jobTitles },
+      };
+    }
+  );
 });
 
-export const GET = handler;
-export const POST = handler;
+// Wrap handlers with logging
+const loggedHandler = async (request: Request) => {
+  const timestamp = new Date().toISOString();
+  const method = request.method;
+  const url = request.url;
+  
+  try {
+    // Try to read body if it exists
+    const clonedRequest = request.clone();
+    const body = await clonedRequest.text();
+    const bodyJson = body ? JSON.parse(body) : null;
+    
+    console.log('📥 [MCP REQUEST]', timestamp, method, url);
+    if (bodyJson) {
+      console.log('📝 [MCP BODY]', JSON.stringify(bodyJson, null, 2));
+    }
+  } catch (e) {
+    console.log('📥 [MCP REQUEST]', timestamp, method, url, '(could not parse body)');
+  }
+  
+  const response = await handler(request);
+  console.log('📤 [MCP RESPONSE]', timestamp, 'Status:', response.status);
+  return response;
+};
+
+export const GET = loggedHandler;
+export const POST = loggedHandler;
