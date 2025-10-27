@@ -984,7 +984,7 @@ export function reconcileProvisionVsPortfolio(): ProvisionPortfolioReconciliatio
     const userPortfolio = portfolioMap.get(email);
     
     Object.entries(emp.services).forEach(([serviceName, status]) => {
-      if (!status || status === '') return;
+      if (!status) return;
       
       // Try to find matching service in portfolio
       const portfolioService = userPortfolio?.get(serviceName);
