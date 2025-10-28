@@ -1315,17 +1315,57 @@ const handler = createMcpHandler(async (server) => {
       inputSchema: {},
     },
     async () => {
-      const data = auditMultiAccountAnomalies();
+      try {
+        const data = auditMultiAccountAnomalies();
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Multi-Account Anomaly Report:\n\nUsers with Multiple Accounts: ${data.length}\n\n${data.slice(0, 15).map((user, idx) => `${idx + 1}. ${user.name} (${user.userId})\n${user.anomalies.map(a => `   ${a.isLegitimate ? '✓' : '⚠️'} ${a.service}: ${a.accountCount} accounts\n   ${a.reason}\n   Accounts: ${a.accounts.map(acc => `${acc.identifier} (${acc.roles.join(', ') || 'No roles'})`).join(', ')}`).join('\n')}`).join('\n\n')}`,
-          },
-        ],
-        structuredContent: data as any,
-      };
+        // Build the response text with simpler, safer formatting
+        let responseText = `Multi-Account Anomaly Report:\n\nUsers with Multiple Accounts: ${data.length}\n\n`;
+        
+        const displayData = data.slice(0, 15);
+        displayData.forEach((user, idx) => {
+          responseText += `${idx + 1}. ${user.name} (${user.userId})\n`;
+          
+          user.anomalies.forEach(anomaly => {
+            const statusIcon = anomaly.isLegitimate ? '✓' : '⚠️';
+            responseText += `   ${statusIcon} ${anomaly.service}: ${anomaly.accountCount} accounts\n`;
+            responseText += `   ${anomaly.reason}\n`;
+            
+            const accountList = anomaly.accounts.map(acc => {
+              const roleStr = acc.roles.length > 0 ? acc.roles.join(', ') : 'No roles';
+              return `${acc.identifier} (${roleStr})`;
+            }).join(', ');
+            
+            responseText += `   Accounts: ${accountList}\n`;
+          });
+          
+          responseText += '\n';
+        });
+        
+        if (data.length > 15) {
+          responseText += `\n...and ${data.length - 15} more users with multi-accounts`;
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: responseText,
+            },
+          ],
+          structuredContent: data as any,
+        };
+      } catch (error) {
+        console.error('Error in audit_multi_account_anomalies:', error);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error auditing multi-account anomalies: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
     }
   );
 
